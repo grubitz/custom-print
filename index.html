@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Print with margins</title>
+<style>
+  body { margin: 0; font: 16px system-ui, sans-serif; background: #ddd; }
+  .controls { padding: 16px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; background: #fff; }
+  .controls p { margin: 0; flex-basis: 100%; color: #555; font-size: 14px; }
+  .controls input[type=number] { width: 5em; }
+  .paper { background: #fff; width: fit-content; margin: 16px; zoom: .5; box-shadow: 0 2px 12px #0004; }
+  .paper img { display: block; object-fit: contain; }
+  .paper img:not([src]) { visibility: hidden; }
+  @media print {
+    body { background: none; }
+    .controls { display: none; }
+    .paper { margin: 0; zoom: 1; box-shadow: none; }
+  }
+</style>
+<style id="page-rule"></style>
+
+<div class="controls">
+  <input type="file" id="file" accept="image/*">
+  <label>Paper
+    <select id="paper">
+      <option>A4</option><option>A5</option><option>A3</option><option value="letter">Letter</option>
+      <option value="custom">Custom</option>
+    </select>
+  </label>
+  <span id="custom" hidden>
+    <input type="number" id="cw" value="15" min="1" step="0.1"> &times;
+    <input type="number" id="ch" value="20" min="1" step="0.1"> cm
+  </span>
+  <label>Margin <input type="number" id="margin" value="2" min="0" step="0.1"> cm</label>
+  <label>Orientation
+    <select id="orient">
+      <option value="auto">Auto</option><option>portrait</option><option>landscape</option>
+    </select>
+  </label>
+  <button onclick="print()">Print</button>
+  <span id="dpi"></span>
+  <p>In the print dialog: Margins <b>Default</b>, Scale <b>100%</b>, <b>Headers and footers off</b>,
+     paper size matching the one above. In printer settings pick "Actual size", not "Fit to page".</p>
+</div>
+<div class="paper"><img id="img" alt=""></div>
+
+<script>
+  const SIZES = { A4: [210, 297], A5: [148, 210], A3: [297, 420], letter: [215.9, 279.4] };
+  const $ = id => document.getElementById(id);
+
+  function layout() {
+    const img = $('img'), paper = $('paper').value, cm = id => (parseFloat($(id).value) || 0) * 10;
+    $('custom').hidden = paper !== 'custom';
+    let [w, h] = [...(paper === 'custom' ? [cm('cw'), cm('ch')] : SIZES[paper])].sort((a, b) => a - b);
+    if (w < 10) return;
+    let orient = $('orient').value;
+    if (orient === 'auto') orient = img.naturalWidth > img.naturalHeight ? 'landscape' : 'portrait';
+    if (orient === 'landscape') [w, h] = [h, w];
+    const m = Math.max(0, Math.min(cm('margin'), Math.min(w, h) / 2 - 5));
+    const cw = w - 2 * m, ch = h - 2 * m;
+
+    // @page margin 0 and padding for the margin: Chrome's "Default" and "None" margin
+    // choices both resolve to 0, so the result doesn't depend on which one she picks.
+    // Print drops bottom/right padding so mm-to-px rounding can't spill onto a blank 2nd page.
+    $('page-rule').textContent = `
+      @page { size: ${w}mm ${h}mm; margin: 0 }
+      .paper { padding: ${m}mm }
+      .paper img { width: ${cw}mm; height: ${ch}mm }
+      @media print { .paper { padding: ${m}mm 0 0 ${m}mm } }`;
+
+    if (img.naturalWidth) {
+      const mmPerPx = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
+      const dpi = Math.round(25.4 / mmPerPx);
+      $('dpi').textContent = `${dpi} dpi` + (dpi < 150 ? ' (low, may print blurry)' : '');
+    }
+  }
+
+  $('file').onchange = e => { const f = e.target.files[0]; if (f) $('img').src = URL.createObjectURL(f); };
+  $('img').onload = layout;
+  for (const id of ['paper', 'cw', 'ch', 'margin', 'orient']) $(id).oninput = layout;
+  layout();
+</script>
